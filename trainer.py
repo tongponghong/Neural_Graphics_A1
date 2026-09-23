@@ -3,25 +3,18 @@ import torchvision.io as io
 import sys
 
 config = {
-    'texture': "images/gradient.png", # DONE: Add your data root
+    'texture': "images/gradient.png", 
+    'resolutions': (16, 32, 64, 128), #sizes of feature grids
+    'feat_dim': 2, #number of features per grid
     'batch_size': 16384,
     'lr': 0.01,
     'epochs': 2000, 
-    'resolutions': (16, 32, 64, 128),
-    'feat_dim': 2
     # Include other parameters as needed.
 }
-
-# if len(sys.argv) < 2:
-#     raise ValueError("Please input path to an image")
-# else:
-#     # image_bgr=cv2.imread(sys.argv[1])
-#     # image=image_bgr[:,:,::-1]
 
 image = io.read_image(config['texture'], mode="RGB")
 image = image.permute(1, 2, 0)
 image = image / 255.0
-#print(image.shape)
 
 def get_device():
     if torch.cuda.is_available():
@@ -41,18 +34,13 @@ class FeatureGrid(nn.Module):
         uv_scaled = uv * 2 - 1 #(N, 2)
         uv_scaled_4d = uv_scaled[None, None, :, :] #(1, 1, N, 2) = (N, H_out, W_out, 2)
         for feature_grid in self.grids: #(1, feat_dim, R, R) = (N, C, H_in, W_in)
-            #print(torch.isnan(feature_grid).any())
             samples = F.grid_sample(feature_grid, uv_scaled_4d, mode="bilinear", 
                                              padding_mode="border", align_corners=False) 
                                              #(1, feat_dim, 1, N) = (N, C, H_out, W_out)
-            
             samples = samples.squeeze(2).permute(0, 2, 1).squeeze(0) #(N, feat_dim)
             result_list.append(samples)
-            
-            
-        result = torch.cat(result_list, dim=1)
-        
-        return result #(N, feat_dim x L)
+        result = torch.cat(result_list, dim=1)#(N, feat_dim x L)
+        return result 
     # def _initialize_weights(self):
     #     for m in self.modules():
     #         nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
@@ -85,7 +73,7 @@ total_pixels = image_height*image_width
 pixel_centers_x = (torch.arange(image_width) + 0.5)/image_width
 pixel_centers_y = (torch.arange(image_height) + 0.5)/image_height
 coords = torch.cartesian_prod(pixel_centers_y, pixel_centers_x)
-target = torch.flatten(image, start_dim=0, end_dim=1).to(torch.float32)
+target = torch.flatten(image, start_dim=0, end_dim=1)
 
 device = get_device()
 print("device : " + device)
@@ -104,9 +92,7 @@ for step in range(config['epochs']):
     sample_targets = sample_targets.to(device)
 
     optimizer.zero_grad()
-    #print(sample_coords[0])
     sample_predictions = model(sample_coords)
-    #print(sample_predictions[0])
     loss = criterion(sample_predictions, sample_targets)
     psnr = -10 * torch.log10(loss)
     if (step % 200 == 0): print(psnr)
