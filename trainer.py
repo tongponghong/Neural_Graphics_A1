@@ -114,9 +114,13 @@ for step in range(config['epochs']):
     #         print(f"❌ {name} has NO GRADIENT!")
 
 coords = coords.to(device)
+target = target.to(device)
 model.eval()
 with torch.no_grad():
-    output = model(coords).to('cpu')
+    output = model(coords)
+    loss = criterion(output, target)
+final_psnr = -10 * torch.log10(loss.to('cpu')).item()
+output = output.to('cpu')
 output = torch.unflatten(output, dim=0, sizes = (image_height, image_width))
 output =  output.permute(2, 0, 1)
 output = torch.clip(output, 0.0, 1.0)
@@ -127,3 +131,15 @@ print(f"wrote output texture to {config['image_out']}")
 PSNRs.append(round(psnr.item(), 3))
 print("PSNRs (taken every 200 epochs):")
 print(PSNRs)
+print(f"Final PSNR: {final_psnr}")
+
+raw_bytes = image_width*image_height*3
+print(f"Raw bytes: {raw_bytes}")
+num_grid_params = sum(p.numel() for p in model.grid.parameters())
+num_mlp_params = sum(p.numel() for p in model.mlp.parameters())
+if(config['quantize']):
+    neural_bytes = num_grid_params + num_mlp_params * 4
+else:
+    neural_bytes = num_grid_params * 4 + num_mlp_params * 4
+print(f"Neural bytes: {neural_bytes}")
+print(f"Compression ratio: {neural_bytes/raw_bytes}")
