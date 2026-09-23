@@ -96,7 +96,7 @@ coords = torch.cartesian_prod(pixel_centers_y, pixel_centers_x)
 target = torch.flatten(image, start_dim=0, end_dim=1)
 
 device = get_device()
-print("device : " + device)
+#print("device : " + device)
 
 model = NeuralTexture().to(device)
 
@@ -117,7 +117,7 @@ for step in range(config['epochs']):
     loss = criterion(sample_predictions, sample_targets)
     psnr = -10 * torch.log10(loss)
     if (step % 200 == 0): PSNRs.append(round(psnr.item(), 3))
-    if (step % 400 == 0): print("running epoch " + str(step) + "/" + str(config['epochs']))
+    #if (step % 400 == 0): print("running epoch " + str(step) + "/" + str(config['epochs']))
     loss.backward()
     optimizer.step()
     # for name, param in model.named_parameters():
@@ -128,12 +128,21 @@ for step in range(config['epochs']):
 
 coords = coords.to(device)
 target = target.to(device)
-if (config['quantize']): quantize_model(model)
+print("PSNRs (taken every 200 epochs):")
+print(PSNRs)
+
 model.eval()
 with torch.no_grad():
     output = model(coords)
     loss = criterion(output, target)
+if (config['quantize']): 
+    quantize_model(model)
+    with torch.no_grad():
+        quantized_output = model(coords)
+        quantized_loss = criterion(quantized_output, target)
+    quantized_psnr = -10 * torch.log10(quantized_loss.to('cpu')).item()
 final_psnr = -10 * torch.log10(loss.to('cpu')).item()
+
 output = output.to('cpu')
 output = torch.unflatten(output, dim=0, sizes = (image_height, image_width))
 output =  output.permute(2, 0, 1)
@@ -141,19 +150,15 @@ output = torch.clip(output, 0.0, 1.0)
 output = (output*255).to(torch.uint8)
 io.write_png(output, config['image_out'], compression_level = 0)
 print(f"wrote output texture to {config['image_out']}")
-print(f"Quantizatoin: {config['quantize']}")
-PSNRs.append(round(psnr.item(), 3))
-print("PSNRs (taken every 200 epochs):")
-print(PSNRs)
+#print(f"Quantizatoin: {config['quantize']}")
+
 print(f"Final PSNR: {final_psnr}")
+if (config['quantize']): print(f"Quantized PSNR: {quantized_psnr}")
 
 raw_bytes = image_width*image_height*3
-print(f"Raw bytes: {raw_bytes}")
 num_grid_params = sum(p.numel() for p in model.grid.parameters())
 num_mlp_params = sum(p.numel() for p in model.mlp.parameters())
-if(config['quantize']):
-    neural_bytes = num_grid_params + num_mlp_params * 4
-else:
-    neural_bytes = num_grid_params * 4 + num_mlp_params * 4
-print(f"Neural bytes: {neural_bytes}")
+neural_bytes = num_grid_params * 4 + num_mlp_params * 4
+quantized_bytes = num_grid_params + num_mlp_params * 4
 print(f"Compression ratio: {neural_bytes/raw_bytes}")
+print(f"Quantized compression ratio: {quantized_bytes/raw_bytes}")
