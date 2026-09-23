@@ -3,19 +3,25 @@ import torchvision.io as io
 import sys
 
 config = {
-    'texture': "images/gradient.png", 
+    'texture': "images/Experiment_1_srgb.png", 
     'resolutions': (16, 32, 64, 128), #sizes of feature grids
     'feat_dim': 2, #number of features per grid
     'batch_size': 16384,
     'lr': 0.01,
     'epochs': 2000, 
+    'image_out': "images/Experiment_1_srgb_neural.png", #NOT YET IMPLEMENTED
     'quantize': False #NOT YET IMPLEMENTED
     # Include other parameters as needed.
 }
 
+print(f"reading texture from {config['texture']}")
+print(f"resolutions: {config['resolutions']} | feat_dim: {config['feat_dim']}")
 image = io.read_image(config['texture'], mode="RGB")
 image = image.permute(1, 2, 0)
-image = image / 255.0
+if (image.dtype == torch.uint16):
+    image = image / 65535.0
+else:
+    image = image / 255.0
 
 def get_device():
     if torch.cuda.is_available():
@@ -106,6 +112,18 @@ for step in range(config['epochs']):
     #         print(f"{name} gradient mean: {param.grad.abs().mean().item()}")
     #     else:
     #         print(f"❌ {name} has NO GRADIENT!")
+
+coords = coords.to(device)
+model.eval()
+with torch.no_grad():
+    output = model(coords).to('cpu')
+output = torch.unflatten(output, dim=0, sizes = (image_height, image_width))
+output =  output.permute(2, 0, 1)
+output = torch.clip(output, 0.0, 1.0)
+output = (output*255).to(torch.uint8)
+io.write_png(output, config['image_out'], compression_level = 0)
+print(f"wrote output texture to {config['image_out']}")
+
 PSNRs.append(round(psnr.item(), 3))
 print("PSNRs (taken every 200 epochs):")
 print(PSNRs)
