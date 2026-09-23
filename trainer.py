@@ -9,6 +9,7 @@ config = {
     'batch_size': 16384,
     'lr': 0.01,
     'epochs': 2000, 
+    'quantize': False #NOT YET IMPLEMENTED
     # Include other parameters as needed.
 }
 
@@ -84,6 +85,7 @@ optimizer = torch.optim.Adam(model.parameters(), config['lr'])
 criterion = nn.MSELoss()
 
 model.train()
+PSNRs = []
 for step in range(config['epochs']):
     sample_indices = torch.randperm(total_pixels)[:config['batch_size']]
     sample_coords = torch.index_select(coords, 0, sample_indices)
@@ -95,7 +97,8 @@ for step in range(config['epochs']):
     sample_predictions = model(sample_coords)
     loss = criterion(sample_predictions, sample_targets)
     psnr = -10 * torch.log10(loss)
-    if (step % 200 == 0): print(psnr)
+    if (step % 200 == 0): PSNRs.append(round(psnr.item(), 3))
+    if (step % 400 == 0): print("running epoch " + str(step) + "/" + str(config['epochs']))
     loss.backward()
     optimizer.step()
     # for name, param in model.named_parameters():
@@ -103,4 +106,6 @@ for step in range(config['epochs']):
     #         print(f"{name} gradient mean: {param.grad.abs().mean().item()}")
     #     else:
     #         print(f"❌ {name} has NO GRADIENT!")
-    
+PSNRs.append(round(psnr.item(), 3))
+print("PSNRs (taken every 200 epochs):")
+print(PSNRs)
