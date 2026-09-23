@@ -10,7 +10,7 @@ config = {
     'lr': 0.01,
     'epochs': 2000, 
     'image_out': "images/Experiment_1_srgb_neural.png", #NOT YET IMPLEMENTED
-    'quantize': False #NOT YET IMPLEMENTED
+    'quantize': True #NOT YET IMPLEMENTED
     # Include other parameters as needed.
 }
 
@@ -74,6 +74,19 @@ class NeuralTexture(nn.Module):
     def forward(self, uv):
         return self.mlp(self.grid(uv))
 
+def quantize_uint8(x):
+    lo, hi = torch.min(x), torch.max(x)
+    scale = (hi-lo)/255
+    q = torch.round((x-lo)/scale)
+    x_hat = lo+q*scale
+    return q, lo, scale, x_hat
+
+def quantize_model(model, quantize_mlp=False):
+    for grid in model.grid.grids:
+        q, lo, scale, x_hat = quantize_uint8(grid.data)
+        with torch.no_grad():
+            grid.data.copy_(x_hat)
+
 image_height = image.shape[0]
 image_width = image.shape[1]
 total_pixels = image_height*image_width
@@ -115,6 +128,7 @@ for step in range(config['epochs']):
 
 coords = coords.to(device)
 target = target.to(device)
+if (config['quantize']): quantize_model(model)
 model.eval()
 with torch.no_grad():
     output = model(coords)
@@ -127,7 +141,7 @@ output = torch.clip(output, 0.0, 1.0)
 output = (output*255).to(torch.uint8)
 io.write_png(output, config['image_out'], compression_level = 0)
 print(f"wrote output texture to {config['image_out']}")
-
+print(f"Quantizatoin: {config['quantize']}")
 PSNRs.append(round(psnr.item(), 3))
 print("PSNRs (taken every 200 epochs):")
 print(PSNRs)
