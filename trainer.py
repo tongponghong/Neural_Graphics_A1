@@ -3,7 +3,7 @@ import torchvision.io as io
 import sys
 
 config = {
-    'texture': "images/Experiment_1_srgb.png", 
+    'texture': "images/test_HF_img.png", 
     'resolutions': (16, 32, 64, 128), #sizes of feature grids
     'feat_dim': 2, #number of features per grid
     'batch_size': 16384,

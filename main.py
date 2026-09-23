@@ -6,7 +6,7 @@ import matplotlib as mpl
 import helpers
 
 def main():
-    image_array = helpers.get_image("/Users/tunger/neural_graphics/Neural_Graphics_A1/images/Experiment_1_srgb.png")
+    image_array = helpers.get_image("/Users/tunger/neural_graphics/Neural_Graphics_A1/images/test_HF_img.png")
     image_array = image_array[:, :, :3]
     print(helpers.sample(0.8, 0.2, image_array))
     print(image_array.shape)
@@ -15,7 +15,7 @@ def main():
 
     decodedImg = helpers.decode_S3TC(encoding, image_array.shape)
 
-    helpers.save_image(decodedImg, "/Users/tunger/neural_graphics/Neural_Graphics_A1/images/Experiment_1_srgb_S3TC.png")
+    helpers.save_image(decodedImg, "/Users/tunger/neural_graphics/Neural_Graphics_A1/images/test_HF_img_S3TC.png")
 
     print(f"{helpers.psnr(decodedImg, image_array):.2f} dB")
 main()
