@@ -48,15 +48,28 @@ def sample(u, v, image_array):
 
     return (1-s)*(1-t)*tex_c00 + s*(1-t)*tex_c10 + (1-s)*t*tex_c01 + s*t*tex_c11
 
-# linearizes the color!
+def c565_to_rgb(color):
+    # https://stackoverflow.com/questions/2442576/how-does-one-convert-16-bit-rgb565-to-24-bit-rgb888
+    r5 = (color & 0xF800) >> 11
+    newR = (r5 * 527 + 23) >> 6
+
+    g6 = (color & 0x07E0) >> 5
+    newG = (g6 * 259 + 33) >> 6
+
+    b5 = (color & 0x001F)
+    newB = (b5 * 527 + 23) >> 6
+
+    return newR, newG, newB
+
 def convert_to_565(color):
     levels = (31, 63, 31)                # 5, 6, 5 bits for R, G, B
-    q      = np.rint(color * levels / 255)           # integer 565 code
-    q /= 255
+    q      = np.rint(np.clip(color, 0, 255) * levels / 255).astype(np.int64)         # integer 565 code
+    # q /= 255
 
-    c_packed = np.int16(q[0] << 11 | q[1] << 5 | q[2])
+    c_packed = np.uint16((int(q[0]) << 11) | (int(q[1]) << 5) | int(q[2]))
 
-    return c_packed, color
+    return c_packed, np.array(c565_to_rgb(int(c_packed)), dtype = np.float64)
+
 
 def process_s3tc_tile(tile):
     # expects a 4x4x3 array 
@@ -115,28 +128,103 @@ def S3TC(texture: np.ndarray):
     tiled_image = get_tiles(texture)
     outblocks = []
 
+    shifts = np.arange(16, dtype = np.uint32) * 2
+    
     for j in range(tiled_image.shape[0]):
         for i in range(tiled_image.shape[1]):
             c0_packed, c1_packed, indices = process_s3tc_tile(tiled_image[j][i])
 
-            idx_bits = 0
-            for shift, i in enumerate(indices):
-                idx_bits |= (i & 0b11) << (shift * 2)
+           
+            idx_bits = int(np.bitwise_or.reduce((indices.ravel().astype(np.uint32) & 0b11) << shifts))
 
             outblocks.append(struct.pack('<HHI', c0_packed, c1_packed, idx_bits))
 
-    
-def decode_S3TC(original_texture: np.ndarray):
-    
-
-    # def find_index(texel, color_vals):
-#     norms = [np.dot(texel - c, texel - c) for c in color_vals]
-
-#     return np.argmin(norms)
-# make note in cv assingment that i am reusing code
-
+    return outblocks
 
     
+def decode_S3TC(encodedBlocks, imageShape):  
+    bytes = b''.join(encodedBlocks)
+    codeStruct = np.dtype([('c0', '<u2'), ('c1', '<u2'), ('idx', '<u4')])
+    blocks = np.frombuffer(bytes, codeStruct)
+
+    numBlocks = len(blocks)
+    c0 = blocks['c0']
+    c1 = blocks['c1']
+    ind = blocks['idx']
+
+    c0r5 = (c0 & 0xF800) >> 11
+    c0R = (c0r5 * 527 + 23) >> 6
+
+    c0g6 = (c0 & 0x07E0) >> 5
+    c0G = (c0g6 * 259 + 33) >> 6
+
+    c0b5 = (c0 & 0x001F)
+    c0B = (c0b5 * 527 + 23) >> 6
+
+    c1r5 = (c1 & 0xF800) >> 11
+    c1R = (c1r5 * 527 + 23) >> 6
+
+    c1g6 = (c1 & 0x07E0) >> 5
+    c1G = (c1g6 * 259 + 33) >> 6
+
+    c1b5 = (c1 & 0x001F)
+    c1B = (c1b5 * 527 + 23) >> 6
+
+    c0_RGB8 = np.stack([c0R, c0G, c0B], axis=-1)
+    c1_RGB8 = np.stack([c1R, c1G, c1B], axis=-1)
+
+    
+        # c2 = 2/3 * c0_RGB8 + 1/3 * c1_RGB8
+        # c3 = 1/3 * c0_RGB8 + 2/3 * c1_RGB8
+
+        # c2 = 1/2 * c0_RGB8 + 1/2 * c1_RGB8
+        # c3 = np.zeros(3)
+
+    isGt = (c0 > c1)[:, None]
+
+    c2 = np.where(isGt, 2/3 * c0_RGB8 + 1/3 * c1_RGB8, 1/2 * c0_RGB8 + 1/2 * c1_RGB8)
+    c3 = np.where(isGt, 1/3 * c0_RGB8 + 2/3 * c1_RGB8, np.zeros_like(c0_RGB8))
+
+    colorPal = np.stack([c0_RGB8, c1_RGB8, c2, c3], axis = 1)
+    
+    shifts = np.arange(0, 32, 2, dtype = np.uint32)
+    indices = (ind[:, None] >> shifts) & 0b11
+
+    decompressed_tex = np.take_along_axis(colorPal, indices[:, :, None], axis=1)
+
+    grid_h = imageShape[0] // 4
+    grid_w = imageShape[1] // 4
+
+    tiles = decompressed_tex.reshape(grid_h, grid_w, 4, 4, 3)
+
+    outImage = tiles.swapaxes(1, 2,).reshape(imageShape)
+
+
+    return np.clip(outImage, 0, 255).astype(np.uint8)
+
+
+def psnr(reconstructed, original, max_val = 255.0):
+    x = np.asarray(original, dtype=np.float64)
+    x_hat = np.asarray(reconstructed, dtype=np.float64)
+
+    if x.shape != x_hat.shape:
+        raise ValueError("ur shapes are wrong nerd")
+
+    mse = np.mean((x - x_hat) ** 2)
+
+    if mse == 0:
+        return float("inf")
+
+    return 20 * np.log10(max_val) - 10 * np.log10(mse)
+
+        
+
+        
+        
+
+
+
+
 
 
 
