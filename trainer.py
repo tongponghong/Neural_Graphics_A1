@@ -14,24 +14,8 @@ config = {
     # Include other parameters as needed.
 }
 
-print(f"reading texture from {config['texture']}")
-print(f"resolutions: {config['resolutions']} | feat_dim: {config['feat_dim']}")
-image = io.read_image(config['texture'], mode="RGB")
-image = image.permute(1, 2, 0)
-if (image.dtype == torch.uint16):
-    image = image / 65535.0
-else:
-    image = image / 255.0
-
-def get_device():
-    if torch.cuda.is_available():
-        return "cuda"
-    elif torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
-
 class FeatureGrid(nn.Module):
-    def __init__(self, resolutions=config["resolutions"], feat_dim = config['feat_dim']):
+    def __init__(self, resolutions, feat_dim):
         super().__init__()
         self.grids = nn.ParameterList([nn.Parameter(torch.ones(1, feat_dim, R, R)) 
                                        for R in resolutions])
@@ -67,9 +51,10 @@ class ColorMLP(nn.Module):
         return self.net(x)
 
 class NeuralTexture(nn.Module):
-    def __init__(self):
+    def __init__(self, cfg):
         super().__init__()
-        self.grid = FeatureGrid()
+        self.cfg = cfg
+        self.grid = FeatureGrid(cfg["resolutions"], cfg["feat_dim"])
         self.mlp = ColorMLP(self.grid.out_dim)
     def forward(self, uv):
         return self.mlp(self.grid(uv))
