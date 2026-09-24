@@ -50,15 +50,20 @@ change it to run on another machine. The script picks CUDA, then MPS, then CPU.
 
 ## Part 1 — S3TC / DXT1 (`helpers.py`)
 
-**Sampling.** `sample(u, v, image_array)` is a bilinear lookup with half-texel
+**Sampling** 
+
+`sample(u, v, image_array)` is a bilinear lookup with half-texel
 centering and clamp-to-edge borders. `v` is bottom-up, so it is flipped before
 indexing the top-down array.
 
-**Tiling.** `get_tiles` reshapes an `(H, W, 3)` image into
+**Tiling** 
+
+`get_tiles` reshapes an `(H, W, 3)` image into
 `(H/4, W/4, 4, 4, 3)` with one reshape and one `swapaxes`.
 
-**Encoding a block** (`process_s3tc_tile`):
+**Encoding a block** 
 
+(`process_s3tc_tile`):
 1. Compute the mean and 3×3 covariance of the 16 texels.
 2. Take the eigenvector of the largest eigenvalue (`np.linalg.eigh`) as the
    principal color axis.
@@ -72,12 +77,16 @@ indexing the top-down array.
 two little-endian 565 endpoints, then sixteen 2-bit indices with texel `(x, y)`
 at bits `2*(4y+x) .. 2*(4y+x)+1`. -->
 
-**Decoding.** `decode_S3TC` is vectorized over all blocks: it parses the byte
+**Decoding** 
+
+`decode_S3TC` is vectorized over all blocks: it parses the byte
 stream with a structured dtype, expands 565 → RGB888, builds both palette
 variants and picks per block with `np.where(c0 > c1, …)`, extracts indices with a
 broadcast shift, and gathers colors with `np.take_along_axis`.
 
-**Size.** 8 bytes per 4×4 block:
+**Size** 
+
+8 bytes per 4×4 block:
 
 ```
 s3tc_bytes = W * H / 2          # 6:1 against 24-bit RGB
@@ -108,7 +117,7 @@ each feature grid and writes the dequantized values back in place, so the
 quantized PSNR reflects the rounding error while the model still runs in float.
 The MLP stays float32.
 
-**Size.**
+**Size**
 
 ```
 raw_bytes       = W * H * 3
@@ -143,10 +152,14 @@ For different possible model sizes:
 
 ## Output
 
-**Per run:** a reconstructed texture, a training-PSNR curve, and console output
+**Per run** 
+
+Reconstructs texture, a training-PSNR curve, and console output
 with the S3TC PSNR, final and quantized neural PSNR, and compression ratios.
 
-**Per image:** `plots/<name>_size_vs_psnr.png` (from `size_vs_PSNR`), with a
+**Per image** 
+
+`plots/<name>_size_vs_psnr.png` (from `size_vs_PSNR`), with a
 log-scale size axis:
 
 - blue line — neural configs at float32, each point labelled with its
